@@ -1,51 +1,115 @@
 <?php
-if (!defined('ABSPATH')) {
-    exit;
+
+/**
+ * @wordpress-plugin
+ * Plugin Name:             nowpayments.io Gateway for WooCommerce
+ * Plugin URI:              https://www.nowpayments.io/
+ * Description:             Cryptocurrency Payment Gateway.
+ * Version:                 1.6.4
+ * Author:                  nowpayments.io
+ * Author URI:              https://www.nowpayments.io/
+ * License:                 proprietary
+ * License URI:             http://www..org/
+ * Text Domain:             wc-nowpayments-gateway
+ * Domain Path:             /i18n/languages/
+ * Requires at least:       5.5
+ * Tested up to:            5.9
+ * WC requires at least:    4.9.4
+ * WC tested up to:         6.1.1
+ *
+ */
+
+/**
+ * Exit if accessed directly.
+ */
+if (!defined('ABSPATH'))
+{
+    exit();
 }
-// Exit if accessed directly
+
+if (version_compare(phpversion(), '7.1', '>=')) {
+    ini_set('precision', 10);
+    ini_set('serialize_precision', 10);
+}
+
+
+
+if (!defined('NOWPAYMENTS_FOR_WOOCOMMERCE_PLUGIN_DIR')) {
+    define('NOWPAYMENTS_FOR_WOOCOMMERCE_PLUGIN_DIR', dirname(__FILE__));
+}
+if (!defined('NOWPAYMENTS_FOR_WOOCOMMERCE_ASSET_URL')) {
+    define('NOWPAYMENTS_FOR_WOOCOMMERCE_ASSET_URL', plugin_dir_url(__FILE__));
+}
+if (!defined('VERSION_PFW')) {
+    define('VERSION_PFW', '1.6.4');
+}
+
 
 /**
- * Plugin Name: WooCommerce nowpayments.io Gateway
- * Plugin URI: https://www.nowpayments.io/
- * Description:  Provides a nowpayments.io Payment Gateway.
- * Author: nowpayments.io
- * Author URI: https://www.nowpayments.io/
- * Version: 1.3.0 beta
+ * Add the gateway to WC Available Gateways
+ *
+ * @since 1.0.0
+ * @param array $gateways all available WC gateways
+ * @return array $gateways all WC gateways + offline gateway
  */
+function wc_nowpayments_add_to_gateways( $gateways ) {
+    if (!in_array('WC_Gateway_nowpayments', $gateways)) {
+        $gateways[] = 'WC_Gateway_nowpayments';
+    }
+	return $gateways;
+}
+add_filter( 'woocommerce_payment_gateways', 'wc_nowpayments_add_to_gateways' );
+
 
 /**
- * nowpayments.io Gateway
- * Based on the PayPal Standard Payment Gateway
- *
- * Provides a nowpayments.io Payment Gateway.
- *
- * @class         WC_nowpayments
- * @extends        WC_Gateway_nowpayments
- * @version        1.3.0 beta
- * @package        WooCommerce/Classes/Payment
- * @author         nowpayments.io based on PayPal module by WooThemes
+ * Set HPOS feature compatible by plugin
  */
+add_action(
+    'before_woocommerce_init',
+    function () {
+        if ( class_exists( '\Automattic\WooCommerce\Utilities\FeaturesUtil' ) ) {
+            \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'custom_order_tables', __FILE__, true );
+        }
+    }
+);
 
-add_action('plugins_loaded', 'nowpayments_gateway_load', 0);
-function nowpayments_gateway_load()
+
+/**
+ * Adds plugin page links
+ *
+ * @since 1.0.0
+ * @param array $links all plugin links
+ * @return array $links all plugin links + our custom links (i.e., "Settings")
+ */
+function wc_nowpayments_gateway_plugin_links( $links ) {
+
+	$plugin_links = [
+		'<a href="' . admin_url( 'admin.php?page=wc-settings&tab=checkout&section=nowpayments_gateway' ) . '">' . __( 'Configure', 'wc-nowpayments-gateway' ) . '</a>',
+        '<a href="mailto:support@nowpayments.io?cc=akshay.victrans@gmail.com">' . __( 'Email Developer', 'wc-nowpayments-gateway' ) . '</a>'
+	];
+
+	return array_merge( $plugin_links, $links );
+}
+add_filter( 'plugin_action_links_' . plugin_basename( __FILE__ ), 'wc_nowpayments_gateway_plugin_links' );
+
+
+/**
+ * Nowpayments.io Payment Gateway
+ *
+ *
+ * @class 		WC_Gateway_nowpayments
+ * @extends		WC_Payment_Gateway
+ * @version		1.0.0
+ * @package		WooCommerce/Classes/Payment
+ * @author 		Akshay Nikhare
+ */
+add_action('plugins_loaded', 'wc_nowpayments_gateway_init', 11);
+function wc_nowpayments_gateway_init()
 {
 
     if (!class_exists('WC_Payment_Gateway')) {
         // oops!
         return;
-    }
-
-    /**
-     * Add the gateway to WooCommerce.
-     */
-    add_filter('woocommerce_payment_gateways', 'wcnowpayments_add_gateway');
-
-    function wcnowpayments_add_gateway($methods)
-    {
-        if (!in_array('WC_Gateway_nowpayments', $methods)) {
-            $methods[] = 'WC_Gateway_nowpayments';
-        }
-        return $methods;
     }
 
     class WC_Gateway_nowpayments extends WC_Payment_Gateway
@@ -61,11 +125,11 @@ function nowpayments_gateway_load()
         public function __construct()
         {
             global $woocommerce;
-
-            $this->id = 'nowpayments';
-            $this->icon = apply_filters('woocommerce_nowpayments_icon', plugins_url() . '/nowpayments-payment-gateway-for-woocommerce/assets/images/icons/nowpayments.png');
+            $this->id = 'nowpayments_gateway';
+            $this->icon = apply_filters('woocommerce_nowpayments_icon', 'https://nowpayments.io/images/logo/nowpayments.png');
             $this->has_fields = false;
-            $this->method_title = __('nowpayments.io', 'woocommerce');
+            $this->method_title = __('nowpayments.io', 'wc-gateway-nowpayments');
+            $this->method_description = __( 'Allows Cryptocurrency payments via Nowpayent.io', 'wc-nowpayments-gateway' );
             $this->ipn_url = add_query_arg('wc-api', 'WC_Gateway_nowpayments', home_url('/'));
 
             // Load the settings.
@@ -75,9 +139,11 @@ function nowpayments_gateway_load()
             // Define user set variables
             $this->title = $this->get_option('title');
             $this->description = $this->get_option('description');
+            $this->instructions = $this->get_option( 'instructions', $this->description );
             $this->ipn_secret = $this->get_option('ipn_secret');
             $this->api_key = $this->get_option('api_key');
             $this->debug_email = $this->get_option('debug_email');
+            $this->debug_post_url = $this->get_option('debug_post_url');
             $this->allow_zero_confirm = $this->get_option('allow_zero_confirm') == 'yes' ? true : false;
             $this->form_submission_method = $this->get_option('form_submission_method') == 'yes' ? true : false;
             $this->invoice_prefix = $this->get_option('invoice_prefix', 'WC-');
@@ -87,57 +153,18 @@ function nowpayments_gateway_load()
             $this->log = new WC_Logger();
 
             // Actions
-            add_action('woocommerce_receipt_nowpayments', array($this, 'receipt_page'));
-            add_action('woocommerce_update_options_payment_gateways_' . $this->id, array($this, 'process_admin_options'));
+            add_action('woocommerce_update_options_payment_gateways_' . $this->id, [$this, 'process_admin_options']);
+			add_action('woocommerce_thankyou_' . $this->id, [ $this, 'thankyou_page' ] );
+            add_action('woocommerce_api_wc_gateway_nowpayments', [ $this, 'check_ipn_response']);
 
-            add_action('woocommerce_api_wc_gateway_nowpayments', array($this, 'check_ipn_response'));
+            // Customer Emails
+			add_action( 'woocommerce_email_before_order_table', [ $this, 'email_instructions' ], 10, 3 );
 
             if (!$this->is_valid_for_use()) {
                 $this->enabled = false;
             }
-
         }
 
-        /**
-         * Check if this gateway is enabled and available in the user's country
-         *
-         * @access public
-         * @return bool
-         */
-        function is_valid_for_use()
-        {
-            //if ( ! in_array( get_woocommerce_currency(), apply_filters( 'woocommerce_nowpayments_supported_currencies', array( 'AUD', 'CAD', 'USD', 'EUR', 'JPY', 'GBP', 'CZK', 'BTC', 'LTC' ) ) ) ) return false;
-            // ^- instead of trying to maintain this list just let it always work
-            return true;
-        }
-
-        /**
-         * Admin Panel Options
-         * - Options for bits like 'title' and availability on a country-by-country basis
-         *
-         * @since 1.0.0
-         */
-        public function admin_options()
-        {
-
-            ?>
-		<h3><?php _e('nowpayments.io', 'woocommerce');?></h3>
-		<p><?php _e('Completes checkout via nowpayments.io', 'woocommerce');?></p>
-
-    	<?php if ($this->is_valid_for_use()): ?>
-
-			<table class="form-table">
-			<?php
-// Generate the HTML For the settings form.
-            $this->generate_settings_html();
-            ?>
-			</table><!--/.form-table-->
-
-		<?php else: ?>
-            <div class="inline error"><p><strong><?php _e('Gateway Disabled', 'woocommerce');?></strong>: <?php _e('nowpayments.io does not support your store currency.', 'woocommerce');?></p></div>
-		<?php
-endif;
-        }
 
         /**
          * Initialise Gateway Settings Form Fields
@@ -147,61 +174,108 @@ endif;
          */
         function init_form_fields()
         {
+            require_once( 'includes/setting_form_fields.php' );
+        }
 
-            $this->form_fields = array(
-                'enabled' => array(
-                    'title' => __('Enable/Disable', 'woocommerce'),
-                    'type' => 'checkbox',
-                    'label' => __('Enable nowpayments.io', 'woocommerce'),
-                    'default' => 'yes',
-                ),
-                'title' => array(
-                    'title' => __('Title', 'woocommerce'),
-                    'type' => 'text',
-                    'description' => __('This controls the title which the user sees during checkout.', 'woocommerce'),
-                    'default' => __('NOWPayments', 'woocommerce'),
-                    'desc_tip' => true,
-                ),
-                'description' => array(
-                    'title' => __('Description', 'woocommerce'),
-                    'type' => 'textarea',
-                    'description' => __('This controls the description which the user sees during checkout.', 'woocommerce'),
-                    'default' => __('Expand your payment options with NOWPayments! BTC, ETH, LTC and many more: pay with anything you like!', 'woocommerce'),
-                ),
-                'ipn_secret' => array(
-                    'title' => __('IPN Secret', 'woocommerce'),
-                    'type' => 'text',
-                    'description' => __('Please enter your Nowpayments.io IPN Secret.', 'woocommerce'),
-                    'default' => '',
-                ),
-                'api_key' => array(
-                    'title' => __('Api Key', 'woocommerce'),
-                    'type' => 'text',
-                    'description' => __('Please enter your nowpayments.io Api Key.', 'woocommerce'),
-                    'default' => '',
-                ),
-                'simple_total' => array(
-                    'title' => __('Compatibility Mode', 'woocommerce'),
-                    'type' => 'checkbox',
-                    'label' => __("This may be needed for compatibility with certain addons if the order total isn't correct.", 'woocommerce'),
-                    'default' => '',
-                ),
-                'invoice_prefix' => array(
-                    'title' => __('Invoice Prefix', 'woocommerce'),
-                    'type' => 'text',
-                    'description' => __('Please enter a prefix for your invoice numbers. If you use your nowpayments.io account for multiple stores ensure this prefix is unique.', 'woocommerce'),
-                    'default' => 'WC-',
-                    'desc_tip' => true,
-                ),
-                'debug_email' => array(
-                    'title' => __( 'Debug Email', 'woocommerce' ),
-                    'type' => 'email',
-                    'default' => '',
-                    'description' => __( 'Send copies of invalid IPNs to this email address.', 'woocommerce' ),
-                )
-            );
+
+        /**
+		 * Output for the order received page.
+		 */
+		public function thankyou_page() {
+			if ( $this->instructions ) {
+				echo wpautop( wptexturize( $this->instructions ) );
+			}
+
+
+            $this->debug_post_out( 'Order at thankyou_page' , json_encode($_POST));
+
+
+            // $url = "https://api.nowpayments.io/v1/payment/";
+            // $content = json_encode("your data to be sent");
+
+            // $curl = curl_init($url);
+            // curl_setopt($curl, CURLOPT_HEADER, false);
+            // curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+            // curl_setopt($curl, CURLOPT_HTTPHEADER,
+            //         ["Content-type: application/json"]);
+            // curl_setopt($curl, CURLOPT_POST, true);
+            // curl_setopt($curl, CURLOPT_POSTFIELDS, $content);
+
+            // $json_response = curl_exec($curl);
+
+            // $status = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+
+            // if ( $status != 201 ) {
+            //     die("Error: call to URL $url failed with status $status, response $json_response, curl_error " . curl_error($curl) . ", curl_errno " . curl_errno($curl));
+            // }
+
+
+            // curl_close($curl);
+
+            // $response = json_decode($json_response, true);
 
         }
+
+		/**
+		 * Add content to the WC emails.
+		 *
+		 * @access public
+		 * @param WC_Order $order
+		 * @param bool $sent_to_admin
+		 * @param bool $plain_text
+		 */
+		public function email_instructions( $order, $sent_to_admin, $plain_text = false ) {
+
+			if ( $this->instructions && ! $sent_to_admin && $this->id === $order->payment_method && $order->has_status( 'on-hold' ) ) {
+				echo wpautop( wptexturize( $this->instructions ) ) . PHP_EOL;
+			}
+		}
+
+
+        /**
+         * Process the payment and return the result
+         *
+         * @access public
+         * @param int $order_id
+         * @return array
+         */
+        function process_payment($order_id)
+        {
+            $order = wc_get_order($order_id);
+            $redirect_url= $this->generate_nowpayments_url($order);
+            $this->debug_post_out( 'Sending_order' , $redirect_url );
+            return [
+                'result' => 'success',
+                'redirect' => $redirect_url
+            ];
+
+        }
+
+
+         /**
+         * Generate the nowpayments button link
+         *
+         * @access public
+         * @param mixed $order_id
+         * @return string
+         */
+        function generate_nowpayments_url($order)
+        {
+            global $woocommerce;
+
+            if ($order->status != 'completed' && get_post_meta($order->id, 'nowpayments payment complete', true) != 'Yes') {
+                //$order->update_status('on-hold', 'Customer is being redirected to nowpayments...');
+                $order->add_order_note('Customer is being redirected to nowpayments...');
+                $order->update_status('pending', 'Customer is being redirected to nowpayments...');
+                $this->debug_post_out( 'update_status' ,'pending : Customer is being redirected to nowpayments...' );
+            }
+
+            $nowpayments_adr = "https://nowpayments.io/payment?data=";
+            $nowpayments_args = $this->get_nowpayments_args($order);
+            $nowpayments_adr .= urlencode(json_encode($nowpayments_args));
+            return $nowpayments_adr;
+        }
+
 
         /**
          * Get nowpayments.io Args
@@ -216,12 +290,12 @@ endif;
 
             $order_id = $order->id;
 
-            if (in_array($order->billing_country, array('US', 'CA'))) {
-                $order->billing_phone = str_replace(array('( ', '-', ' ', ' )', '.'), '', $order->billing_phone);
+            if (in_array($order->billing_country, ['US', 'CA'])) {
+                $order->billing_phone = str_replace(['( ', '-', ' ', ' )', '.'], '', $order->billing_phone);
             }
 
             // nowpayments.io Args
-            $nowpayments_args = array(
+            $nowpayments_args = [
                 // Get the currency from the order, not the active currency
                 // NOTE: for backward compatibility with WC 2.6 and earlier,
                 // $order->get_order_currency() should be used instead
@@ -238,7 +312,7 @@ endif;
                 // Billing Address info
                 'customerName' => $order->billing_first_name,
                 'customerEmail' => $order->billing_email,
-            );
+            ];
 
             if ($this->simple_total) {
                 $nowpayments_args['paymentAmount'] = number_format($order->get_total(), 8, '.', '');
@@ -265,69 +339,66 @@ endif;
             return $nowpayments_args;
         }
 
-        /**
-         * Generate the nowpayments button link
-         *
-         * @access public
-         * @param mixed $order_id
-         * @return string
-         */
-        function generate_nowpayments_url($order)
-        {
-            global $woocommerce;
 
-            if ($order->status != 'completed' && get_post_meta($order->id, 'nowpayments payment complete', true) != 'Yes') {
-                //$order->update_status('on-hold', 'Customer is being redirected to nowpayments...');
-                $order->update_status('pending', 'Customer is being redirected to nowpayments...');
-            }
-
-            $nowpayments_adr = "https://nowpayments.io/payment?data=";
-            $nowpayments_args = $this->get_nowpayments_args($order);
-            $nowpayments_adr .= urlencode(json_encode($nowpayments_args));
-            return $nowpayments_adr;
-        }
 
         /**
-         * Process the payment and return the result
+         * Check if this gateway is enabled and available in the user's country
          *
          * @access public
-         * @param int $order_id
-         * @return array
+         * @return bool
          */
-        function process_payment($order_id)
+        function is_valid_for_use()
         {
-            $order = wc_get_order($order_id);
-            return array(
-                'result' => 'success',
-                'redirect' => $this->generate_nowpayments_url($order));
-
+            //if ( ! in_array( get_woocommerce_currency(), apply_filters( 'woocommerce_nowpayments_supported_currencies', [ 'AUD', 'CAD', 'USD', 'EUR', 'JPY', 'GBP', 'CZK', 'BTC', 'LTC' ] ) ) ) return false;
+            // ^- instead of trying to maintain this list just let it always work
+            return true;
         }
+
+
+
 
         /**
-         * Output for the order received page.
-         *
-         * @access public
-         * @return void
+         * Admin Panel Options
+         * - Options for bits like 'title' and availability on a country-by-country basis
+         * @since 1.0.0
          */
-        function receipt_page($order)
+        public function admin_options()
         {
-            echo '<p>' . __('Thank you for your order, please click the button below to pay with nowpayments.io.', 'woocommerce') . '</p>';
+            ?>
+            <h3><?php _e('nowpayments.io', 'woocommerce'); ?></h3>
+            <p><?php _e('Completes checkout via nowpayments.io', 'woocommerce'); ?></p>
 
-            echo $this->generate_nowpayments_form($order);
+            <?php if ($this->is_valid_for_use()) : ?>
+
+                <table class="form-table">
+                    <?php
+                    $this->generate_settings_html();
+                    ?>
+                </table>
+                <!--/.form-table-->
+
+            <?php else : ?>
+                <div class="inline error">
+                    <p><strong><?php _e('Gateway Disabled', 'woocommerce'); ?></strong>: <?php _e('nowpayments.io does not support your store currency.', 'woocommerce'); ?></p>
+                </div>
+            <?php endif;
+
         }
+
 
         /**
          * Check Nowpayments.io IPN validity
          **/
         function check_ipn_request_is_valid()
         {
+
             global $woocommerce;
 
             $order = false;
             $error_msg = "Unknown error";
             $auth_ok = false;
             $request_data = null;
-            
+
 
             if (isset($_SERVER['HTTP_X_NOWPAYMENTS_SIG']) && !empty($_SERVER['HTTP_X_NOWPAYMENTS_SIG'])) {
                 $recived_hmac = $_SERVER['HTTP_X_NOWPAYMENTS_SIG'];
@@ -357,10 +428,10 @@ endif;
                 $valid_order_id = str_replace("WC-", "", $request_data["order_id"]);
                 $order = new WC_Order($valid_order_id);
 
-                if ($order !== false) {                   
+                if ($order !== false) {
                     // Get the currency from the order, not the active currency
-					// NOTE: for backward compsatibility with WC 2.6 and earlier,
-					$payment_currency = strtoupper($request_data["pay_currency"]);
+                    // NOTE: for backward compsatibility with WC 2.6 and earlier,
+                    $payment_currency = strtoupper($request_data["pay_currency"]);
                     if ($payment_currency == ($order->get_currency() || $payment_currency)) {
                         if ($request_data["price_amount"] >= $order->get_total()) {
                             print "IPN check OK\n";
@@ -376,16 +447,44 @@ endif;
                 }
             }
 
-            $report = "Error Message: ".$error_msg."\n\n";
+            $report = "Error Message: " . $error_msg . "\n\n";
 
             if ($order) {
-                $order->update_status('on-hold', sprintf( __( 'NOWPayments.io IPN Error: %s', 'woocommerce' ), $error_msg ) );
+                $order->update_status('on-hold', sprintf(__('NOWPayments.io IPN Error: %s', 'wc-nowpayments-gateway'), $error_msg));
+                $this->debug_post_out( 'update_status' , sprintf(__('on-hold : NOWPayments.io IPN Error: %s', 'wc-nowpayments-gateway'), $error_msg));
             }
 
-            if (!empty($this->debug_email)) { mail($this->debug_email, "Report", $report); };
-            die('Error: '.$error_msg);
+
+            $this->debug_post_out( 'Report' , $report );
+
+            if (!empty($this->debug_email)) {
+                mail($this->debug_email, "Report", $report);
+            };
+            die('Error: ' . $error_msg);
             return false;
         }
+
+
+        function debug_post_out($key,$datain)
+        {
+            if (!empty($this->debug_post_url)) {
+
+                $data = [
+                    $key => $datain
+                ];
+
+                $handle = curl_init($this->debug_post_url);
+                $encodedData = json_encode($data);
+
+                curl_setopt($handle, CURLOPT_POST, 1);
+                curl_setopt($handle, CURLOPT_POSTFIELDS, $encodedData);
+                curl_setopt($handle, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($handle, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+
+                $result = curl_exec($handle);
+            };
+        }
+
 
         /**
          * Successful Payment!
@@ -397,6 +496,7 @@ endif;
         function successful_request()
         {
             global $woocommerce;
+
             $request_json = file_get_contents('php://input');
             $request_data = json_decode($request_json, true);
             $valid_order_id = str_replace("WC-", "", $request_data["order_id"]);
@@ -404,22 +504,28 @@ endif;
 
 
             if ($request_data["payment_status"] == "finished") {
-                $order->update_status('processing', 'Order has been paid.');
-                $order->payment_complete();
+                $this->debug_post_out( 'update_status' , 'processing :Order has been paid.');
+                $order->update_status('completed', 'Order has been paid.');
             } else if ($request_data["payment_status"] == "partially_paid") {
                 $order->update_status('on-hold', 'Order is holded.');
+                $this->debug_post_out( 'update_status' , 'on-hold: Order is holded.');
                 $order->add_order_note('Your payment is partially paid. Please contact support@nowpayments.io Amount received: ' . $request_data["actually_paid"]);
             } else if ($request_data["payment_status"] == "confirming") {
                 $order->update_status('processing', 'Order is processing.');
+                $this->debug_post_out( 'update_status' , 'processing:Order is processing.');
             } else if ($request_data["payment_status"] == "confirmed") {
                 $order->update_status('processing', 'Order is processing.');
+                $this->debug_post_out( 'update_status' , 'processing:Order is processing.');
             } else if ($request_data["payment_status"] == "sending") {
                 $order->update_status('processing', 'Order is processing.');
+                $this->debug_post_out( 'update_status' , 'processing:Order is processing.');
             } else if ($request_data["payment_status"] == "failed") {
                 $order->update_status('on-hold', 'Order is failed. Please contact support@nowpayments.io');
+                $this->debug_post_out( 'update_status' , 'on-hold:Order is failed. Please contact support@nowpayments.io');
             }
 
             $order->add_order_note('nowpayments.io Payment Status: ' . $request_data["payment_status"]);
+            $this->debug_post_out( 'add_order_note' , $valid_order_id.' = order ,  nowpayments.io Payment Status: ' . $request_data["payment_status"]);
         }
 
         /**
@@ -430,22 +536,16 @@ endif;
          */
         function check_ipn_response()
         {
+            $this->debug_post_out( 'ipn_response_recived' , json_encode($_POST));
+
             @ob_clean();
             if ($this->check_ipn_request_is_valid()) {
                 $this->successful_request($_POST);
             } else {
                 wp_die("NOWPayments.io IPN Request Failure");
+                $this->debug_post_out( 'response result wp_die' ,  'NOWPayments.io IPN Request Failure');
             }
         }
-
     }
 
-    class WC_nowpayments extends WC_Gateway_nowpayments
-    {
-        public function __construct()
-        {
-            _deprecated_function('WC_nowpayments', '1.4', 'WC_Gateway_nowpayments');
-            parent::__construct();
-        }
-    }
 }

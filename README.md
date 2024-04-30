@@ -96,26 +96,6 @@ The details you provide during the account creation are confidential and securel
 * A  [NOWPayments](https://nowpayments.io/) account
 * An installed  [Woocommerce](https://wordpress.org/plugins/woocommerce/) plugin
 
-
-= Plugin installation =
-
-1. Upload the nowpayments-gateway-for-woocommerce directory to the /wp-content/plugins/directory.
-2. Activate the plugin through the “Plugins” menu in WordPress.
-
-After the plugin is activated, NOWPayments will appear in the WooCommerce>Payments section.
-
-= Plugin configuration =
-
-After you have installed the NOWPayments plugin, the configuration steps are:
-
-1. On the WooCommerce “Settings” page, go to the “Payment Gateways” tab, then click “NowPayments”
-2. Check “Enable NowPayments” and enter your NOWPayments Api Key.
-3. Specify your IPN Secret
-4. Click “Save changes” and the gateway will be active.
-
-== Support ==
-If you run into any problems, or if you simply wish to discuss something with our experts, make sure you [contact us](https://nowpayments.io/contact-us/) with your query, and someone will help you shortly. Before contacting us, you can check the [frequently-asked questions](https://nowpayments.io/help/) to see if the answer to your problem is already available.
-
 == Changelog ==
 = 1.6.4 =
 * Updated code to replace all instances of `array()` with `[]` for the main plugin core.

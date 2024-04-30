@@ -97,6 +97,7 @@ The details you provide during the account creation are confidential and securel
 * An installed  [Woocommerce](https://wordpress.org/plugins/woocommerce/) plugin
 
 == Changelog ==
+
 = 1.6.4 =
 * Updated code to replace all instances of `array()` with `[]` for the main plugin core.
 * Modified the main plugin file to reflect the version change from 1.6.3 to 1.6.4.
